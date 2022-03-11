@@ -4,6 +4,8 @@ const router = express.Router();
 const app = express();
 const clock = require('monotonic-timestamp');
 const jwt = require('jsonwebtoken');
+const { signatureVerify } = require('@polkadot/util-crypto');
+const { hexToU8a } = require('@polkadot/util');
 
 function Env(key, default_value=undefined) {
     if(process.env[key]) {
@@ -12,7 +14,7 @@ function Env(key, default_value=undefined) {
         if(default_value) {
             return default_value;
         } else {
-            throw `Ìnvalid environment variable ${key}`;
+            throw `Invalid environment variable ${key}`;
         }
     }
 }
@@ -27,48 +29,68 @@ app.use(bodyParser.json());
 
 // Auxiliary Functions and Variables
 
-const key_db = ["my_pub_key"];
+const key_db = {};
+key_db[Env("TEST_ADDRESS")] = 0;
 
-function whiteListed(pubkey) {
+function getLastTimestamp(address) {
+    return key_db[address];
+}
+
+function setLastTimestamp(address, t) {
+    key_db[address] = t;
+}
+
+/*function whiteListed(address) {
     // TODO: Turn into a DB later
-    return key_db.includes(pubkey);
+    return key_db.includes(address);
+}*/
+
+function validSignature(address, signature, data) {
+    const { isValid } = signatureVerify(data, hexToU8a(signature), address);
+    return isValid; // TODO
 }
 
-function validSignature(pubkey, signature, data) {
-    return signature == data;
-}
-
-function getAuthToken(pubkey) {
-    return jwt.sign({pubkey: pubkey}, JWT_SECRET, { expiresIn: JWT_DURATION+'s' });
+function getAuthToken(address) {
+    return jwt.sign({address: address}, JWT_SECRET, { expiresIn: JWT_DURATION+'s' });
 }
 
 // API Endpoints
 
 router.get('/', (req,res) => {
     // Retrieve and send current monotonic timestamp
-    var timestamp = clock().toString();
-    res.end(timestamp);
+    res.end(clock().toString());
 });
 
 router.post('/', (req,res) => {
 
     // Verify if the request is valid
-    if(req.body.pubkey && req.body.signature && req.body.timestamp) {
-        var pubkey = req.body.pubkey;
+    if(req.body.address && req.body.signature && req.body.timestamp) {
+        var address = req.body.address;
         var signature = req.body.signature;
         var timestamp = req.body.timestamp;
 
         // Verify if received timestamp is valid
-        if(Number(timestamp) < clock()) {
+        var n_timestamp = Number(timestamp);
+        if(n_timestamp < clock()) {
 
-            // Verify if the pubkey is whitelisted
-            if(whiteListed(pubkey)) {
+            // Verify if the address is whitelisted
+            var last_timestamp = getLastTimestamp(address);
+            var is_whitelisted = last_timestamp != null && last_timestamp != undefined;
+            if(is_whitelisted) {
 
-                // Verify if it is a valid signature
-                if(validSignature(pubkey, signature, timestamp)) {
-                    res.json(getAuthToken(pubkey)).end();
+                // Verify if timestamp is fresh
+                if(last_timestamp < n_timestamp) {
+                    // Verify if it is a valid signature
+                    if(validSignature(address, signature, timestamp)) {
+
+                        setLastTimestamp(address, n_timestamp);
+
+                        res.json(getAuthToken(address)).end();
+                    } else {
+                        res.status(401).end("Invalid Signature");
+                    }
                 } else {
-                    res.status(401).end("Invalid Signature");
+                    res.status(401).end("Replayed Timestamp");
                 }
             } else {
                 res.status(403).end("Not Whitelisted");
