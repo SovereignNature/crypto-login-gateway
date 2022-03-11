@@ -3,8 +3,23 @@ const bodyParser = require("body-parser");
 const router = express.Router();
 const app = express();
 const clock = require('monotonic-timestamp');
+const jwt = require('jsonwebtoken');
 
-const port = 80;
+function Env(key, default_value=undefined) {
+    if(process.env[key]) {
+        return process.env[key];
+    } else {
+        if(default_value) {
+            return default_value;
+        } else {
+            throw `Ìnvalid environment variable ${key}`;
+        }
+    }
+}
+
+const PORT = Number(Env("APP_PORT", 80));
+const JWT_SECRET = Env("JWT_SECRET");
+const JWT_DURATION = Number(Env("JWT_DURATION", 1800));
 
 // Configure Express
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -23,9 +38,8 @@ function validSignature(pubkey, signature, data) {
     return signature == data;
 }
 
-function getAuthToken() {
-    // TODO: generate cookie or jwt
-    return "yes";
+function getAuthToken(pubkey) {
+    return jwt.sign({pubkey: pubkey}, JWT_SECRET, { expiresIn: JWT_DURATION+'s' });
 }
 
 // API Endpoints
@@ -52,7 +66,7 @@ router.post('/', (req,res) => {
 
                 // Verify if it is a valid signature
                 if(validSignature(pubkey, signature, timestamp)) {
-                    res.end(getAuthToken());
+                    res.json(getAuthToken(pubkey)).end();
                 } else {
                     res.status(401).end("Invalid Signature");
                 }
@@ -71,6 +85,6 @@ router.post('/', (req,res) => {
 app.use("/", router);
 
 // Start the web server
-app.listen(port, () => {
-    console.log(`Listenning on PORT ${port}`);
+app.listen(PORT, () => {
+    console.log(`Listenning on PORT ${PORT}`);
 });
