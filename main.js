@@ -4,7 +4,7 @@ const router = express.Router();
 const app = express();
 const clock = require('monotonic-timestamp');
 
-const port = 8080;
+const port = 80;
 
 // Configure Express
 app.use(bodyParser.urlencoded({ extended: false }));

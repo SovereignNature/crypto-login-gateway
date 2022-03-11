@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+    login-api:
+        build:
+            context: .
+            args:
+                IMG_TAG_VAR: "$IMG_TAG"
+        image: sadu-login-api:$IMG_TAG
+        container_name: login-api
+        restart: unless-stopped
+        ports:
+            - "8080:80"
