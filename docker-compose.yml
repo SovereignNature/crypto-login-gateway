@@ -3,7 +3,7 @@ version: "3.9"
 services:
     login-api:
         build:
-            context: .
+            context: ./server
             args:
                 IMG_TAG_VAR: "$IMG_TAG"
         image: sadu-login-api:$IMG_TAG
@@ -12,3 +12,14 @@ services:
         ports:
             - "8080:$APP_PORT"
         env_file: .env
+    tester:
+        build:
+            context: ./test
+            args:
+                IMG_TAG_VAR: "$IMG_TAG"
+        image: sadu-test:$IMG_TAG
+        container_name: sadu-test
+        restart: "no"
+        env_file: .env
+        depends_on:
+            - login-api

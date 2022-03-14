@@ -2,7 +2,7 @@
   "name": "sadu-login",
   "version": "1.0.0",
   "description": "",
-  "main": "main.js",
+  "main": "test.js",
   "scripts": {
     "test": "node test.js"
   },
@@ -12,13 +12,7 @@
     "@polkadot/keyring": "8.4.1",
     "@polkadot/util": "8.4.1",
     "@polkadot/util-crypto": "8.4.1",
-    "body-parser": "1.19.2",
-    "express": "4.17.3",
     "jsonwebtoken": "8.5.1",
-    "monotonic-timestamp": "0.0.9"
-  },
-  "devDependencies": {
-    "axios": "^0.26.1",
-    "dotenv": "^16.0.0"
+    "axios": "0.26.1"
   }
 }

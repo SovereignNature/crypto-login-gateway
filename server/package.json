@@ -1,0 +1,20 @@
+{
+  "name": "sadu-login",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@polkadot/keyring": "8.4.1",
+    "@polkadot/util": "8.4.1",
+    "@polkadot/util-crypto": "8.4.1",
+    "body-parser": "1.19.2",
+    "express": "4.17.3",
+    "jsonwebtoken": "8.5.1",
+    "monotonic-timestamp": "0.0.9"
+  }
+}
