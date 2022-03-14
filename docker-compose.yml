@@ -12,6 +12,22 @@ services:
         ports:
             - "8080:$APP_PORT"
         env_file: .env
+        volumes:
+            - ${PWD}/whitelist.txt:/login-api/whitelist.txt
+    new-market-db:
+        container_name: new-market-db
+        image: postgres:13.4
+        env_file:
+          - .env
+        environment:
+          PGDATA: /data/postgres
+#        volumes:
+#          - postgres:/data/postgres
+        ports:
+          - "5432:5432"
+#        networks:
+#          - new_marketnet
+        restart: unless-stopped
     tester:
         build:
             context: ./test
@@ -23,3 +39,4 @@ services:
         env_file: .env
         depends_on:
             - login-api
+            - new-market-db

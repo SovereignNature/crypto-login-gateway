@@ -7,6 +7,21 @@ const {
 const { stringToU8a, u8aToHex } = require('@polkadot/util');
 const { Keyring } = require('@polkadot/keyring');
 const axios = require('axios');
+//const pg = require('pg');
+
+function Env(key, default_value=undefined) {
+    if(process.env[key]) {
+        return process.env[key];
+    } else {
+        if(default_value) {
+            return default_value;
+        } else {
+            throw `Invalid environment variable ${key}`;
+        }
+    }
+}
+
+const Sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function genAddress() {
   // Create mnemonic string for Alice using BIP39
@@ -34,17 +49,19 @@ async function genAddress() {
 }
 
 async function main() {
+    await Sleep(7000);
+
     // create a keyring with some non-default values specified
     const keyring = new Keyring(/*{ type: 'sr25519', ss58Format: 2 }*/);
 
-    const mnemonic = process.env.TEST_MNEMONIC;
+    const mnemonic = Env("TEST_MNEMONIC");
     console.log(`mnemonic: ${mnemonic}`);
 
     const alice = keyring.addFromUri(mnemonic/*, { name: 'alice' }, 'ed25519'*/);
 
     console.log('Address: ', alice.address);
 
-    const url = process.env.TEST_URL;
+    const url = Env("TEST_URL");
 
     var resp = await axios.get(url);
 
