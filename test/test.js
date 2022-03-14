@@ -23,23 +23,19 @@ function Env(key, default_value=undefined) {
 
 const Sleep = ms => new Promise(r => setTimeout(r, ms));
 
+const URL = Env("TEST_URL");
+
 async function genAddress() {
   // Create mnemonic string for Alice using BIP39
   const mnemonic = mnemonicGenerate();
 
-  console.log(`Generated mnemonic: ${mnemonic}`);
+  console.log(`Mnemonic: ${mnemonic}`);
 
   // Validate the mnemic string that was generated
   const isValidMnemonic = mnemonicValidate(mnemonic);
-  console.log(`isValidMnemonic: ${isValidMnemonic}`);
+  // console.log(`isValidMnemonic: ${isValidMnemonic}`);
 
-  // Create valid Substrate-compatible seed from mnemonic
-  // const seedAlice = mnemonicToMiniSecret(mnemonic);
-
-  // Generate new public/secret keypair for Alice from the supplied seed
-  // const { publicKey, secretKey } = naclKeypairFromSeed(seedAlice);
-
-  const keyring = new Keyring(/*{ type: 'sr25519', ss58Format: 2 }*/);
+  const keyring = new Keyring();
 
   // Create and add the pair to the keyring
   const pair = keyring.addFromUri(mnemonic);
@@ -48,41 +44,55 @@ async function genAddress() {
   console.log('Address: ', pair.address);
 }
 
-async function main() {
-    await Sleep(7000);
+async function checkConnection() {
+    var connected = false;
+    for(var i = 0; i < 10; i++) {
+        try {
+            var resp = await axios.get(URL);
+            if(resp.data) {
+                // console.log(res);
+                connected = true;
+                break;
+            }
+        } catch(err) {
+            // Ignore and try again
+            // console.log(err);
+            await Sleep(1000);
+        }
+    }
+    if(!connected) {
+        throw Error(`Cannot connect to ${URL}!`);
+    }
+}
 
-    // create a keyring with some non-default values specified
-    const keyring = new Keyring(/*{ type: 'sr25519', ss58Format: 2 }*/);
-
-    const mnemonic = Env("TEST_MNEMONIC");
-    console.log(`mnemonic: ${mnemonic}`);
-
-    const alice = keyring.addFromUri(mnemonic/*, { name: 'alice' }, 'ed25519'*/);
-
-    console.log('Address: ', alice.address);
-
-    const url = Env("TEST_URL");
-
-    var resp = await axios.get(url);
-
+async function login(keypair) {
+    var resp = await axios.get(URL);
     var timestamp = resp.data;
-    console.log(timestamp);
 
-    const signature = u8aToHex(alice.sign(stringToU8a(timestamp)));
-
-    console.log("Signature: " + signature);
+    const signature = u8aToHex(keypair.sign(stringToU8a(timestamp)));
 
     var credentials = {
-        address: alice.address,
+        address: keypair.address,
         signature: signature,
         timestamp: timestamp
     };
 
-    resp = await axios.post(url, credentials);
-    console.log("JWT: " + resp.data);
+    resp = await axios.post(URL, credentials);
+    return resp.data;
 }
 
-//console.log(process.argv);
+async function main() {
+    await checkConnection();
+
+    // Create a keyring
+    const keyring = new Keyring();
+    const mnemonic = Env("TEST_MNEMONIC");
+    const alice = keyring.addFromUri(mnemonic);
+
+    var jwt = await login(alice);
+    console.log("  > Alice" , alice.address, jwt != null);
+}
+
 
 if(process.argv[2] == "genaddress") {
     genAddress().catch(console.error).finally(() => process.exit());

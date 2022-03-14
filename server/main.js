@@ -27,6 +27,7 @@ const Sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = Number(Env("APP_PORT", 80));
 const JWT_SECRET = Env("JWT_SECRET");
 const JWT_DURATION = Number(Env("JWT_DURATION", 1800));
+const WHITELIST_FILE = '/login-api/whitelist.txt';
 
 // Configure Express
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -78,22 +79,19 @@ async function initDB() {
 
         // Insert Entries
         try {
-            var file = '/login-api/whitelist.txt';
-            await fs.access(file, require('fs').constants.R_OK);
+            await fs.access(WHITELIST_FILE, require('fs').constants.R_OK);
 
             var p = new Promise( async (resolve, reject) => {
                 var px = [];
                 var inserted = 0;
 
-                var fd = await fs.open(file);
+                var fd = await fs.open(WHITELIST_FILE);
                 var reader = readline.createInterface({
                   input: fd.createReadStream(),
                   crlfDelay: Infinity
                 });
 
                 for await (const line of reader) {
-                    console.log(`Line from file: ${line}`);
-
                     var p = db.query("INSERT INTO whitelist (address, last_timestamp) VALUES ($1, $2);", [line.trim(), 0]);
 
                     inserted++;
@@ -108,7 +106,7 @@ async function initDB() {
             console.log(`Inserted ${inserted} entries in whitelist.`);
         } catch (err) {
             console.log(err);
-            console.log("Whitelist file does not exist!");
+            //console.log("Whitelist file does not exist!");
             process.exit();
         }
     } else {
@@ -155,8 +153,6 @@ router.post('/', async (req,res) => {
             var last_timestamp = await getLastTimestamp(address);
             var is_whitelisted = last_timestamp != null && last_timestamp != undefined;
             if(is_whitelisted) {
-
-                console.log(last_timestamp, n_timestamp);
 
                 // Verify if timestamp is fresh
                 if(last_timestamp < n_timestamp) {
