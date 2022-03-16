@@ -6,11 +6,11 @@ services:
             context: ./server
             args:
                 IMG_TAG_VAR: "$IMG_TAG"
-        image: sadu-login-api:$IMG_TAG
+        image: crypto-login-api:$IMG_TAG
         container_name: login-api
         restart: unless-stopped
         ports:
-            - "8080:$APP_PORT"
+            - "8080:$SERVER_PORT"
         env_file: .env
         volumes:
             - ${PWD}/whitelist.txt:/login-api/whitelist.txt
@@ -33,8 +33,8 @@ services:
             context: ./test
             args:
                 IMG_TAG_VAR: "$IMG_TAG"
-        image: sadu-test:$IMG_TAG
-        container_name: sadu-test
+        image: crypto-test:$IMG_TAG
+        container_name: crypto-test
         restart: "no"
         env_file: .env
         depends_on:

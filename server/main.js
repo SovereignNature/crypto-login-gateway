@@ -1,7 +1,5 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const router = express.Router();
-const app = express();
 const clock = require('monotonic-timestamp');
 const jwt = require('jsonwebtoken');
 const { signatureVerify } = require('@polkadot/util-crypto');
@@ -9,6 +7,7 @@ const { hexToU8a } = require('@polkadot/util');
 const pg = require('pg');
 const fs = require('fs/promises');
 const readline = require('readline');
+const log4js = require("log4js");
 
 function Env(key, default_value=undefined) {
     if(process.env[key]) {
@@ -24,46 +23,112 @@ function Env(key, default_value=undefined) {
 
 const Sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const PORT = Number(Env("APP_PORT", 80));
+const IMG_TAG = Env("IMG_TAG");
+
+const SERVER_PORT = Number(Env("SERVER_PORT", 80));
 const JWT_SECRET = Env("JWT_SECRET");
 const JWT_DURATION = Number(Env("JWT_DURATION", 1800));
-const WHITELIST_FILE = '/login-api/whitelist.txt';
+const WHITELIST_FILE = Env("WHITELIST_FILE", '/login-api/whitelist.txt');
+const RESET_WHITELIST = Env("RESET_WHITELIST", 'false') == 'true';
+
+const N_CONNECTION_TRIES = Number(Env("N_CONNECTION_TRIES", 10));
+
+const POSTGRES_HOST = Env("POSTGRES_HOST");
+const POSTGRES_DB = Env("POSTGRES_DB");
+const POSTGRES_USER = Env("POSTGRES_USER");
+const POSTGRES_PASSWORD = Env("POSTGRES_PASSWORD");
+const POSTGRES_PORT = Number(Env("POSTGRES_PORT"));
+
+// Configure Logger
+log4js.configure({
+  appenders: { out: { type: 'stdout', layout: {
+      type: 'pattern',
+      pattern: '%[[%d{dd-MM-yyyy hh:mm:ss}] %p ::%] %m',
+      /*tokens: {
+        user: function(logEvent) {
+          return AuthLibrary.currentUser();
+        }
+    }*/
+  }}},
+  categories: { default: { appenders: [ 'out' ], level: 'debug' } }
+});
+var log = log4js.getLogger();
+//log.level = "debug";
 
 // Configure Express
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+const router = express.Router();
+const server = express();
+server.use(bodyParser.urlencoded({ extended: false }));
+server.use(bodyParser.json());
 
 // Configure DB Connection
 const db = new pg.Pool({
-  host: Env("POSTGRES_HOST"),
-  database: Env("POSTGRES_DB"),
-  user: Env("POSTGRES_USER"),
-  password: Env("POSTGRES_PASSWORD"),
-  port: Number(Env("POSTGRES_PORT")),
+  host: POSTGRES_HOST,
+  database: POSTGRES_DB,
+  user: POSTGRES_USER,
+  password: POSTGRES_PASSWORD,
+  port: POSTGRES_PORT,
 });
 
 // Auxiliary Functions and Variables
 
 async function checkConnection() {
     var connected = false;
-    for(var i = 0; i < 10; i++) {
+    for(var i = 0; i < N_CONNECTION_TRIES && !connected; i++) {
         try {
-            var res = await db.query('SELECT NOW()');
-            if(res) {
-                // console.log(res);
-                connected = true;
-                break;
-            }
+            /*var res = */await db.query('SELECT NOW()');
+            connected = true;
         } catch(err) {
             // Ignore and try again
-            // console.log(err);
             await Sleep(1000);
+
+            log.debug(`Re-trying to connect to DB on ${POSTGRES_HOST}:${POSTGRES_PORT} (attempt ${i+1}/${N_CONNECTION_TRIES}) ...`);
         }
     }
-    if(!connected) {
-        throw Error("Cannot connect to database!");
-    } else {
-        console.log("Connected to DB!");
+    if(N_CONNECTION_TRIES > 0) {
+        if(!connected) {
+            throw Error(`Cannot connect to database on ${POSTGRES_HOST}:${POSTGRES_PORT} !`);
+        } else {
+            log.debug(`Connected to DB on ${POSTGRES_HOST}:${POSTGRES_PORT}`);
+        }
+    }
+}
+
+async function fillDB() {
+    // Create Table
+    var res = await db.query('CREATE TABLE whitelist (address varchar(255), last_timestamp varchar(255));');
+
+    // Insert Entries
+    try {
+        await fs.access(WHITELIST_FILE, require('fs').constants.R_OK);
+
+        var p = new Promise( async (resolve, reject) => {
+            var px = [];
+            var inserted = 0;
+
+            var fd = await fs.open(WHITELIST_FILE);
+            var reader = readline.createInterface({
+              input: fd.createReadStream(),
+              crlfDelay: Infinity
+            });
+
+            for await (const line of reader) {
+                var p = db.query("INSERT INTO whitelist (address, last_timestamp) VALUES ($1, $2);", [line.trim(), 0]);
+
+                inserted++;
+
+                px.push(p);
+            }
+            Promise.all(px);
+            resolve(inserted);
+        });
+
+        var inserted = await p;
+        return inserted;
+    } catch (err) {
+        log.debug(err);
+        //log.debug("Whitelist file does not exist!");
+        process.exit();
     }
 }
 
@@ -73,44 +138,22 @@ async function initDB() {
 
     var table_exists = (await db.query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='whitelist');")).rows[0]?.exists;
 
-    if(!table_exists) {
-        // Create Table
-        var res = await db.query('CREATE TABLE whitelist (address varchar(255), last_timestamp varchar(255));');
+    if( table_exists ) {
+        if( RESET_WHITELIST ) {
+            await db.query('DROP TABLE whitelist;');
 
-        // Insert Entries
-        try {
-            await fs.access(WHITELIST_FILE, require('fs').constants.R_OK);
+            log.debug("Whitelist cleared!");
 
-            var p = new Promise( async (resolve, reject) => {
-                var px = [];
-                var inserted = 0;
+            var n_inserted = await fillDB();
+            log.debug(`Inserted ${n_inserted} entries in whitelist.`);
+        } else {
+            var n_addresses = (await db.query("SELECT COUNT() FROM whitelist;")).rows[0]?.count;
 
-                var fd = await fs.open(WHITELIST_FILE);
-                var reader = readline.createInterface({
-                  input: fd.createReadStream(),
-                  crlfDelay: Infinity
-                });
-
-                for await (const line of reader) {
-                    var p = db.query("INSERT INTO whitelist (address, last_timestamp) VALUES ($1, $2);", [line.trim(), 0]);
-
-                    inserted++;
-
-                    px.push(p);
-                }
-                Promise.all(px);
-                resolve(inserted);
-            });
-
-            var inserted = await p;
-            console.log(`Inserted ${inserted} entries in whitelist.`);
-        } catch (err) {
-            console.log(err);
-            //console.log("Whitelist file does not exist!");
-            process.exit();
+            log.debug(`Whitelist already exists with ${n_addresses} addresses.`);
         }
     } else {
-        console.log("Whitelist already exists.");
+        var n_inserted = await fillDB();
+        log.debug(`Inserted ${n_inserted} entries in whitelist.`);
     }
 }
 
@@ -134,16 +177,21 @@ function getAuthToken(address) {
 
 router.get('/', (req,res) => {
     // Retrieve and send current monotonic timestamp
-    res.end(clock().toString());
+    res.send(clock().toString()).end();
 });
 
 router.post('/', async (req,res) => {
 
+    var address = undefined;
+    var signature = undefined;
+    var timestamp = undefined;
+    var msg = "";
+
     // Verify if the request is valid
     if(req.body.address && req.body.signature && req.body.timestamp) {
-        var address = req.body.address;
-        var signature = req.body.signature;
-        var timestamp = req.body.timestamp;
+        address = req.body.address;
+        signature = req.body.signature;
+        timestamp = req.body.timestamp;
 
         // Verify if received timestamp is valid
         var n_timestamp = Number(timestamp);
@@ -161,35 +209,50 @@ router.post('/', async (req,res) => {
 
                         await setLastTimestamp(address, n_timestamp);
 
-                        res.json(getAuthToken(address)).end();
+                        var jwt = getAuthToken(address);
+
+                        msg = "";
+                        res.json(jwt);
                     } else {
-                        res.status(401).end("Invalid Signature");
+                        msg = "Invalid Signature";
+                        res.status(401).send(msg);
                     }
                 } else {
-                    res.status(401).end("Replayed Timestamp");
+                    msg = "Replayed Timestamp";
+                    res.status(401).send(msg);
                 }
             } else {
-                res.status(403).end("Not Whitelisted");
+                msg = "Not Whitelisted";
+                res.status(403).send(msg);
             }
         } else {
-            res.status(401).end("Invalid Timestamp");
+            msg = "Invalid Timestamp";
+            res.status(401).send(msg);
         }
     } else {
-        res.status(400).end("Invalid Login Request");
+        msg = "Invalid Login Request";
+        res.status(400).send(msg);
     }
+
+    // Log request
+    var str = (msg!=""? " : " + msg : "");
+    log.debug(`LOGIN: ${address} -> ${res.statusCode} ${res.statusMessage}${str}`);
+    res.end();
 });
 
-// Add router to the Express app
-app.use("/", router);
+// Add router to the Express server
+server.use("/", router);
 
 async function main() {
-    // InitDB
+    log.debug(`crypto-login ${IMG_TAG}`);
+
+    // Initialize the database
     await initDB();
 
     // Start the web server
-    app.listen(PORT, () => {
-        console.log(`Listenning on PORT ${PORT}`);
-    });
+    /*const sv = */await server.listen(SERVER_PORT);
+
+    log.debug(`Listening on tcp/${SERVER_PORT} ...\n`);
 }
 
 main();
