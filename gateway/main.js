@@ -6,7 +6,9 @@ const { signatureVerify } = require('@polkadot/util-crypto');
 const { hexToU8a } = require('@polkadot/util');
 const pg = require('pg');
 const fs = require('fs/promises');
+const net = require('net-promise');
 const readline = require('readline');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const log4js = require("log4js");
 
 function Env(key, default_value=undefined) {
@@ -31,6 +33,8 @@ const JWT_DURATION = Number(Env("JWT_DURATION", 1800));
 const WHITELIST_FILE = Env("WHITELIST_FILE", '/login-api/whitelist.txt');
 const RESET_WHITELIST = Env("RESET_WHITELIST", 'false') == 'true';
 
+const BACKEND_URL = Env("BACKEND_URL");
+
 const N_CONNECTION_TRIES = Number(Env("N_CONNECTION_TRIES", 10));
 
 const POSTGRES_HOST = Env("POSTGRES_HOST");
@@ -44,16 +48,10 @@ log4js.configure({
   appenders: { out: { type: 'stdout', layout: {
       type: 'pattern',
       pattern: '%[[%d{dd-MM-yyyy hh:mm:ss}] %p ::%] %m',
-      /*tokens: {
-        user: function(logEvent) {
-          return AuthLibrary.currentUser();
-        }
-    }*/
   }}},
   categories: { default: { appenders: [ 'out' ], level: 'debug' } }
 });
 var log = log4js.getLogger();
-//log.level = "debug";
 
 // Configure Express
 const router = express.Router();
@@ -72,29 +70,54 @@ const db = new pg.Pool({
 
 // Auxiliary Functions and Variables
 
-async function checkConnection() {
-    var connected = false;
-    for(var i = 0; i < N_CONNECTION_TRIES && !connected; i++) {
-        try {
-            /*var res = */await db.query('SELECT NOW()');
-            connected = true;
-        } catch(err) {
-            // Ignore and try again
-            await Sleep(1000);
+async function checkConnection(dep) {
+    return new Promise( async (resolve, reject) => {
+        var aux = dep.split(":");
+        var host = aux[0];
+        var port = Number(aux[1] ? aux[1] : "80");
 
-            log.debug(`Re-trying to connect to DB on ${POSTGRES_HOST}:${POSTGRES_PORT} (attempt ${i+1}/${N_CONNECTION_TRIES}) ...`);
+        var connected = false;
+        for(var i = 0; i < N_CONNECTION_TRIES && !connected; i++) {
+            try {
+
+                var client = await net.Socket({host: host, port: port});
+                connected = true;
+                client.close();
+
+            } catch(err) {
+                // Ignore and try again
+                await Sleep(1000);
+
+                log.debug(`Re-trying to connect to ${dep} (attempt ${i+1}/${N_CONNECTION_TRIES}) ...`);
+            }
         }
-    }
-    if(N_CONNECTION_TRIES > 0) {
-        if(!connected) {
-            throw Error(`Cannot connect to database on ${POSTGRES_HOST}:${POSTGRES_PORT} !`);
+        if(N_CONNECTION_TRIES > 0) {
+            if(!connected) {
+                reject(Error(`Cannot connect to ${dep}`));
+            } else {
+                log.debug(`Connected to ${dep}`);
+
+                resolve();
+            }
         } else {
-            log.debug(`Connected to DB on ${POSTGRES_HOST}:${POSTGRES_PORT}`);
+            resolve();
         }
-    }
+    } );
+}
+
+async function dependencies(deps) {
+    var px = [];
+
+    deps.forEach((dep, i) => {
+        var p = checkConnection(dep);
+        px.push(p);
+    });
+
+    return Promise.all(px);
 }
 
 async function fillDB() {
+
     // Create Table
     var res = await db.query('CREATE TABLE whitelist (address varchar(255), last_timestamp varchar(255));');
 
@@ -123,18 +146,15 @@ async function fillDB() {
             resolve(inserted);
         });
 
-        var inserted = await p;
-        return inserted;
+        return await p;
     } catch (err) {
         log.debug(err);
-        //log.debug("Whitelist file does not exist!");
+
         process.exit();
     }
 }
 
 async function initDB() {
-
-    await checkConnection();
 
     var table_exists = (await db.query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='whitelist');")).rows[0]?.exists;
 
@@ -209,10 +229,11 @@ router.post('/', async (req,res) => {
 
                         await setLastTimestamp(address, n_timestamp);
 
-                        var jwt = getAuthToken(address);
+                        var token = getAuthToken(address);
 
                         msg = "";
-                        res.json(jwt);
+                        res.json(token);
+                        // return res.json({ auth: true, token: token });
                     } else {
                         msg = "Invalid Signature";
                         res.status(401).send(msg);
@@ -241,10 +262,48 @@ router.post('/', async (req,res) => {
 });
 
 // Add router to the Express server
-server.use("/", router);
+server.use("/login", router);
+
+// Authorization
+server.use('', (req, res, next) => {
+    const x = req.headers['x-access-token'];
+    const a = req.headers['authorization'];
+    const token = x ? x : (a ? a.split(' ')[1] : null);
+
+    if(token) {
+        try {
+            var decoded = jwt.verify(token, JWT_SECRET);
+            //console.log(decoded);
+
+            next();
+        } catch(err) {
+            //console.log(err);
+            res.status(403).send(err.message);
+        }
+    } else {
+        //res.status(401).json({ auth: false, message: 'No token provided.' });
+        res.status(401).send('No token provided.');
+    }
+});
+
+// Proxy endpoints
+server.use('/', createProxyMiddleware({
+    target: BACKEND_URL,
+    changeOrigin: false
+    /*pathRewrite: {
+        [`^/json_placeholder`]: '',
+    },*/
+}));
 
 async function main() {
+
     log.debug(`crypto-login ${IMG_TAG}`);
+
+    // Wait for the dependencies to initialize
+    await dependencies([
+        `${POSTGRES_HOST}:${POSTGRES_PORT}`,
+        BACKEND_URL.replace(/http[s]?:\/\//, "")
+    ]);
 
     // Initialize the database
     await initDB();
@@ -254,5 +313,4 @@ async function main() {
 
     log.debug(`Listening on tcp/${SERVER_PORT} ...\n`);
 }
-
 main();

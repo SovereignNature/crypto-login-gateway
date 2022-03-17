@@ -1,19 +1,47 @@
 version: "3.9"
 
 services:
-    login-api:
+    login-gateway:
         build:
-            context: ./server
+            context: ./gateway
             args:
                 IMG_TAG_VAR: "$IMG_TAG"
-        image: crypto-login-api:$IMG_TAG
-        container_name: login-api
+        image: crypto-login-gateway:$IMG_TAG
+        container_name: login-gateway
         restart: unless-stopped
         ports:
             - "8080:$SERVER_PORT"
         env_file: .env
         volumes:
-            - ${PWD}/whitelist.txt:/login-api/whitelist.txt
+            - ${PWD}/whitelist.txt:/login-gateway/whitelist.txt
+#    login-api:
+#        build:
+#            context: ./server
+#            args:
+#                IMG_TAG_VAR: "$IMG_TAG"
+#        image: crypto-login-api:$IMG_TAG
+#        container_name: login-api
+#        restart: unless-stopped
+#        ports:
+#            - "8080:$SERVER_PORT"
+#        env_file: .env
+#        volumes:
+#            - ${PWD}/whitelist.txt:/login-api/whitelist.txt
+#    login-proxy:
+#        build:
+#            context: ./proxy
+#            args:
+#                IMG_TAG_VAR: "$IMG_TAG"
+#        image: crypto-login-proxy:$IMG_TAG
+#        container_name: login-proxy
+#        restart: unless-stopped
+#        ports:
+#            - "8081:$PROXY_PORT"
+#        env_file: .env
+    hello-world:
+        container_name: hello-world
+        image: strm/helloworld-http
+        restart: unless-stopped
     new-market-db:
         container_name: new-market-db
         image: postgres:13.4
