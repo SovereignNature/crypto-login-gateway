@@ -28,6 +28,9 @@ COPY ["./main.js", "."]
 ARG IMG_TAG_VAR=1.0.0
 ENV IMG_TAG=$IMG_TAG_VAR
 
+#ENV NODE_ENV=development
+ENV NODE_ENV=production
+
 EXPOSE 80/tcp
 
-ENTRYPOINT ["node", "main.js"]
+CMD ["node", "main.js"]

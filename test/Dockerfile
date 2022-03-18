@@ -28,4 +28,6 @@ COPY ["./test.js", "."]
 ARG IMG_TAG_VAR=1.0.0
 ENV IMG_TAG=$IMG_TAG_VAR
 
-ENTRYPOINT ["node", "test.js"]
+ENV NODE_ENV=development
+
+CMD ["node", "test.js", "--trace-sync-io", "--trace-warnings"]
