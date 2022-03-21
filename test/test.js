@@ -12,55 +12,50 @@ const {
     Keyring
 } = require('@polkadot/keyring');
 const axios = require('axios');
-const net = require('net-promise');
-//const pg = require('pg');
 
-// Auxiliary Utility Functions
-const Env = (key, default_value = undefined) => {
-    if (process.env[key]) {
-        return process.env[key];
-    } else {
-        if (default_value) {
-            return default_value;
-        } else {
-            throw `Invalid environment variable ${key}`;
-        }
-    }
-}
+const log4js = require("log4js");
 
-const Sleep = ms => new Promise(r => setTimeout(r, ms));
-
-const Assert = (expr, msg = undefined) => {
-    let status, color;
-    if (expr) {
-        status = "OK";
-        color = "32";
-    } else {
-        status = "FAILED";
-        color = "31";
-    }
-
-    let str = "";
-    if (msg) {
-        str = ` : ${String(msg).trim()}`;
-    }
-
-    console.log(`\x1b[${color}m [${status}] \x1b[0m ${str}`);
-};
+const {
+    Env,
+    Reply,
+    Sleep,
+    Assert,
+    checkDependencies
+} = require("./utils.js");
 
 const API_URL = Env("API_URL");
 const N_CONNECTION_TRIES = Number(Env("N_CONNECTION_TRIES", 10));
+const SLEEP_CONNECTION_TRIES = Number(Env("SLEEP_CONNECTION_TRIES", 1000));
 
+// Configure Logger
+log4js.configure({
+    appenders: {
+        out: {
+            type: 'stdout',
+            layout: {
+                type: 'pattern',
+                pattern: '%[[%d{dd-MM-yyyy hh:mm:ss}] %p ::%] %m',
+            }
+        }
+    },
+    categories: {
+        default: {
+            appenders: ['out'],
+            level: 'debug'
+        }
+    }
+});
+const log = log4js.getLogger("main");
 
 async function genAddress() {
     // Create mnemonic string for Alice using BIP39
     const mnemonic = mnemonicGenerate();
 
-    console.log(`Mnemonic: ${mnemonic}`);
+    log.debug(`Mnemonic: ${mnemonic}`);
 
     // Validate the mnemic string that was generated
     const isValidMnemonic = mnemonicValidate(mnemonic);
-    // console.log(`isValidMnemonic: ${isValidMnemonic}`);
+    // log.debug(`isValidMnemonic: ${isValidMnemonic}`);
 
     const keyring = new Keyring();
 
@@ -68,57 +63,7 @@ async function genAddress() {
     const pair = keyring.addFromUri(mnemonic);
 
     // Print the address (encoded with the ss58Format)
-    console.log('Address: ', pair.address);
-}
-
-async function checkConnection(dep) {
-    return new Promise(async (resolve, reject) => {
-        let aux = dep.split(":");
-        let host = aux[0];
-        let port = Number(aux[1] ? aux[1] : "80");
-
-        let connected = false;
-        for (let i = 0; i < N_CONNECTION_TRIES && !connected; i++) {
-            try {
-
-                let client = await net.Socket({
-                    host: host,
-                    port: port
-                });
-                connected = true;
-                client.close();
-
-            } catch (err) {
-                //console.log(err);
-                // Ignore and try again
-                await Sleep(1000);
-
-                console.log(`Re-trying to connect to ${dep} (attempt ${i+1}/${N_CONNECTION_TRIES}) ...`);
-            }
-        }
-        if (N_CONNECTION_TRIES > 0) {
-            if (!connected) {
-                reject(Error(`Cannot connect to ${dep}`));
-            } else {
-                console.log(`Connected to ${dep}`);
-
-                resolve();
-            }
-        } else {
-            resolve();
-        }
-    });
-}
-
-async function dependencies(deps) {
-    let px = [];
-
-    deps.forEach((dep, i) => {
-        let p = checkConnection(dep);
-        px.push(p);
-    });
-
-    return Promise.all(px);
+    log.debug('Address: ', pair.address);
 }
 
 async function login(keypair, sig = undefined, ts = undefined) {
@@ -136,15 +81,9 @@ async function login(keypair, sig = undefined, ts = undefined) {
 
         resp = await axios.post(API_URL + "/login", credentials);
 
-        return {
-            status: resp.status,
-            body: resp.data
-        };
+        return Reply(resp.status, resp.data);
     } catch (err) {
-        return {
-            status: err.response?.status,
-            body: err.response?.data
-        };
+        return Reply(err.response?.status, err.response?.data);
     }
 }
 
@@ -163,21 +102,15 @@ async function get(path, jwt, option = 1) {
 
         let resp = await axios.get(API_URL + path, config);
 
-        return {
-            status: resp.status,
-            body: resp.data
-        };
+        return Reply(resp.status, resp.data);
     } catch (err) {
-        return {
-            status: err.response?.status,
-            body: err.response?.data
-        };
+        return Reply(err.response?.status, err.response?.data);
     }
 }
 
 async function main() {
     // Wait for web server
-    await dependencies([API_URL.replace(/http[s]?:\/\//, "")]);
+    await checkDependencies([API_URL], N_CONNECTION_TRIES, SLEEP_CONNECTION_TRIES);
 
     // Create a keyring
     const keyring = new Keyring();
@@ -234,7 +167,9 @@ async function main() {
     Ax(401, reply);
 
     // jwt expired
-    await Sleep(3100);
+    let ts = 3100;
+    log.debug(`Sleep ${ts} ms ...`);
+    await Sleep(ts);
     reply = await get("/", token);
     Ax(403, reply);
 }

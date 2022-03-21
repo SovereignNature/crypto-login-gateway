@@ -23,7 +23,7 @@ FROM node:$CUSTOM_NODE_VERSION AS production
 WORKDIR /test
 COPY --from=pruner /test/node_modules ./node_modules
 
-COPY ["./test.js", "./"]
+COPY ["./test.js", "./utils.js", "./"]
 
 ARG IMG_TAG_VAR=1.0.0
 ENV IMG_TAG=$IMG_TAG_VAR

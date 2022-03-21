@@ -11,7 +11,6 @@ const {
     Env,
     Sleep,
     Reply,
-    checkConnection,
     checkDependencies
 } = require("./utils.js");
 
