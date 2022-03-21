@@ -23,7 +23,7 @@ FROM node:$CUSTOM_NODE_VERSION AS production
 WORKDIR /login-api
 COPY --from=pruner /login-api/node_modules ./node_modules
 
-COPY ["./main.js", "."]
+COPY ["./main.js", "./db.js", "./auth.js", "./utils.js", "./"]
 
 ARG IMG_TAG_VAR=1.0.0
 ENV IMG_TAG=$IMG_TAG_VAR

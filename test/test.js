@@ -31,7 +31,7 @@ const Env = (key, default_value = undefined) => {
 const Sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const Assert = (expr, msg = undefined) => {
-    var status, color;
+    let status, color;
     if (expr) {
         status = "OK";
         color = "32";
@@ -40,7 +40,7 @@ const Assert = (expr, msg = undefined) => {
         color = "31";
     }
 
-    var str = "";
+    let str = "";
     if (msg) {
         str = ` : ${String(msg).trim()}`;
     }
@@ -73,15 +73,15 @@ async function genAddress() {
 
 async function checkConnection(dep) {
     return new Promise(async (resolve, reject) => {
-        var aux = dep.split(":");
-        var host = aux[0];
-        var port = Number(aux[1] ? aux[1] : "80");
+        let aux = dep.split(":");
+        let host = aux[0];
+        let port = Number(aux[1] ? aux[1] : "80");
 
-        var connected = false;
-        for (var i = 0; i < N_CONNECTION_TRIES && !connected; i++) {
+        let connected = false;
+        for (let i = 0; i < N_CONNECTION_TRIES && !connected; i++) {
             try {
 
-                var client = await net.Socket({
+                let client = await net.Socket({
                     host: host,
                     port: port
                 });
@@ -111,10 +111,10 @@ async function checkConnection(dep) {
 }
 
 async function dependencies(deps) {
-    var px = [];
+    let px = [];
 
     deps.forEach((dep, i) => {
-        var p = checkConnection(dep);
+        let p = checkConnection(dep);
         px.push(p);
     });
 
@@ -123,12 +123,12 @@ async function dependencies(deps) {
 
 async function login(keypair, sig = undefined, ts = undefined) {
     try {
-        var resp = await axios.get(API_URL + "/login");
-        var timestamp = resp.data;
+        let resp = await axios.get(API_URL + "/login");
+        let timestamp = resp.data;
 
         const signature = u8aToHex(keypair.sign(stringToU8a(timestamp)));
 
-        var credentials = {
+        let credentials = {
             address: keypair.address,
             signature: sig ? sig : signature,
             timestamp: ts ? ts : timestamp
@@ -161,7 +161,7 @@ async function get(path, jwt, option = 1) {
             }
         }
 
-        var resp = await axios.get(API_URL + path, config);
+        let resp = await axios.get(API_URL + path, config);
 
         return {
             status: resp.status,
@@ -184,14 +184,14 @@ async function main() {
     const alice = keyring.addFromUri(Env("TEST_MNEMONIC"));
     const bob = keyring.addFromUri(mnemonicGenerate());
 
-    var reply = null;
+    let reply = null;
 
     const Ax = (expected_status, reply) => Assert(reply.status == expected_status, `${reply.status} ${reply.body}`);
 
     // Sucess Login
     reply = await login(alice);
     Ax(200, reply);
-    var token = reply.body;
+    let token = reply.body;
 
     // Not Whitelisted
     reply = await login(bob);
