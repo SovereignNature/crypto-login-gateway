@@ -15,7 +15,6 @@ const {
 } = require("./utils.js");
 
 const {DataBase} = require("./db.js");
-
 const {Auth} = require("./auth.js");
 
 // Server Configurations
@@ -67,6 +66,7 @@ const db = new DataBase({
     port: POSTGRES_PORT,
 });
 
+// Configure Authentication
 const auth = new Auth(JWT_SECRET, JWT_DURATION, db);
 
 // Configure Express
@@ -83,7 +83,6 @@ server.use(cors({
 }));
 
 // API Endpoints
-
 const login_resource = express.Router();
 
 login_resource.get('/', (req, res) => {
@@ -144,7 +143,7 @@ async function main() {
     // Wait for the dependencies to initialize
     const dependencies = [
         `${POSTGRES_HOST}:${POSTGRES_PORT}`,
-        BACKEND_URL //.replace(/http[s]?:\/\//, "")
+        BACKEND_URL
     ];
     await checkDependencies(dependencies, N_CONNECTION_TRIES, SLEEP_CONNECTION_TRIES);
 

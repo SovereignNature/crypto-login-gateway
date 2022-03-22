@@ -8,13 +8,15 @@ const log4js = require("log4js");
 
 const log = log4js.getLogger("main");
 
-var pool = null;
+//const {Assert} = require("./utils.js");
 
 async function fillDB(whitelist_file) {
+    let pool = this.pool;
+
     return new Promise(
         async (resolve, reject) => {
             try {
-                if(whitelist_file == "") {
+                if (whitelist_file == "") {
                     return resolve(0);
                 }
 
@@ -60,6 +62,8 @@ async function fillDB(whitelist_file) {
 }
 
 async function initDB(reset_whitelist, whitelist_file) {
+    let pool = this.pool;
+
     let table_exists = (await pool.query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='whitelist');")).rows[0]?.exists;
 
     let insert = false;
@@ -80,26 +84,32 @@ async function initDB(reset_whitelist, whitelist_file) {
         insert = true;
     }
 
-    if(insert) {
-        let n_inserted = await fillDB(whitelist_file);
+    if (insert) {
+        let n_inserted = await this.fillDB(whitelist_file);
         log.debug(`Inserted ${n_inserted} entries in whitelist.`);
     }
 }
 
 async function getLastTimestamp(address) {
+    let pool = this.pool;
+
     return (await pool.query("SELECT last_timestamp FROM whitelist WHERE address=$1 AND enabled='true'", [address])).rows[0]?.last_timestamp;
 }
 
 async function setLastTimestamp(address, ts) {
+    let pool = this.pool;
+
     await pool.query('UPDATE whitelist SET last_timestamp = $1 WHERE address = $2', [ts, address]);
 }
 
 function DataBase(db_configs) {
-    if(!pool) {
+    /*if(!pool) {
         pool = new pg.Pool(db_configs);
-    }
+    }*/
+    this.pool = new pg.Pool(db_configs);
 
     this.init = initDB;
+    this.fillDB = fillDB;
     this.getLastTimestamp = getLastTimestamp;
     this.setLastTimestamp = setLastTimestamp;
 }

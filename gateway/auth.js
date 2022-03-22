@@ -15,10 +15,6 @@ const {
     Reply
 } = require("./utils.js");
 
-var jwt_secret;
-var jwt_duration;
-var db;
-
 function getNonce() {
     return clock().toString();
 }
@@ -32,6 +28,8 @@ function verifySignature(address, signature, data) {
 }
 
 function getAuthToken(address) {
+    let {jwt_secret, jwt_duration} = this;
+
     return jwt.sign({
         address: address
     }, jwt_secret, {
@@ -44,7 +42,7 @@ function verifyAuthToken(token) {
         return Reply(401, 'No Token Provided');
 
     try {
-        let decoded = jwt.verify(token, jwt_secret);
+        let decoded = jwt.verify(token, this.jwt_secret);
 
         return Reply(200, decoded);
     } catch (err) {
@@ -74,7 +72,7 @@ async function login(address, signature, timestamp) {
             return Reply(401, "Invalid Timestamp : Future Timestamp");
 
         // Verify if the address is whitelisted
-        let last_timestamp = await db.getLastTimestamp(address);
+        let last_timestamp = await this.db.getLastTimestamp(address);
         if (!last_timestamp)
             return Reply(403, "Not Whitelisted");
 
@@ -89,9 +87,9 @@ async function login(address, signature, timestamp) {
 
         // Login suceded, update last_timestamp and return a new jwt
 
-        await db.setLastTimestamp(address, n_timestamp);
+        await this.db.setLastTimestamp(address, n_timestamp);
 
-        let token = getAuthToken(address);
+        let token = this.getAuthToken(address);
 
         return Reply(200, token); // { auth: true, token: token }
     } catch (err) {
@@ -99,15 +97,13 @@ async function login(address, signature, timestamp) {
     }
 }
 
-function Auth(jwt_secret_, jwt_duration_, db_) {
-    if(!db_)
+function Auth(jwt_secret, jwt_duration, db) {
+    if(!db)
         throw new Error("DB is undefined!");
 
-    if(!jwt_secret) {
-        jwt_secret = jwt_secret_;
-        jwt_duration = jwt_duration_;
-        db = db_;
-    }
+    this.jwt_secret = jwt_secret;
+    this.jwt_duration = jwt_duration;
+    this.db = db;
 
     this.getNonce = getNonce;
     this.verifySignature = verifySignature;

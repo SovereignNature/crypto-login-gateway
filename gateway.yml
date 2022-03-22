@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: login-gateway-service
+spec:
+  type: ClusterIP
+  ports:
+    - name: login-gateway-container-port
+      protocol: TCP
+      #nodePort: 31000
+      targetPort: login-gateway-container-port
+      port: 8080
+  selector:
+    app: login-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: login-gateway-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: login-gateway
+  template:
+    metadata:
+      labels:
+        app: login-gateway
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: login-gateway-container
+        image: test.compendium.sovereignnature.ch/crypto-login-gateway:latest
+        imagePullPolicy: Always
+        envFrom:
+            - secretRef:
+                name: marketplace-env
+            - secretRef:
+                name: login-env
+        volumeMounts:
+        - name: "whitelist"
+          mountPath: "/login-gateway/whitelist.txt"
+          subPath: "whitelist.txt"
+        ports:
+          - name: login-gateway-container-port
+            protocol: TCP
+            containerPort: 80
+        startupProbe:
+            tcpSocket:
+                port: login-gateway-container-port
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            #successThreshold: 1
+            failureThreshold: 20
+        readinessProbe:
+            tcpSocket:
+                port: login-gateway-container-port
+            initialDelaySeconds: 1
+        #    failureThreshold: 1
+            periodSeconds: 15
+        livenessProbe:
+            tcpSocket:
+                port: login-gateway-container-port
+            initialDelaySeconds: 15
+        #    failureThreshold: 1
+            periodSeconds: 15
+      volumes:
+      - name: "whitelist"
+        configMap:
+            name: "whitelist"
