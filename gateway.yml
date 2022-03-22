@@ -5,10 +5,10 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - name: login-gateway-container-port
+    - name: service-port
       protocol: TCP
       #nodePort: 31000
-      targetPort: login-gateway-container-port
+      targetPort: container-port
       port: 8080
   selector:
     app: login-gateway
@@ -45,25 +45,25 @@ spec:
           mountPath: "/login-gateway/whitelist.txt"
           subPath: "whitelist.txt"
         ports:
-          - name: login-gateway-container-port
+          - name: container-port
             protocol: TCP
             containerPort: 80
         startupProbe:
             tcpSocket:
-                port: login-gateway-container-port
+                port: container-port
             initialDelaySeconds: 1
             periodSeconds: 5
             #successThreshold: 1
             failureThreshold: 20
         readinessProbe:
             tcpSocket:
-                port: login-gateway-container-port
+                port: container-port
             initialDelaySeconds: 1
         #    failureThreshold: 1
             periodSeconds: 15
         livenessProbe:
             tcpSocket:
-                port: login-gateway-container-port
+                port: container-port
             initialDelaySeconds: 15
         #    failureThreshold: 1
             periodSeconds: 15
